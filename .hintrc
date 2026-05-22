@@ -4,7 +4,6 @@
   ],
   "hints": {
     "no-inline-styles": "off",
-    "button-type": "off",
     "axe/name-role-value": [
       "default",
       {
