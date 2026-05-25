@@ -17,7 +17,7 @@ const cameras = [
     cameraId: "CAM-NW-01", 
     location: "Main St & 5th Ave", 
     status: "active" as const, 
-    videoSrc: "/videos/Bellevue_150th_Eastgate__2017-09-11_17-08-33.mp4"   
+    videoSrc: "/videos/12207144_1920_1080_30fps.mp4"   
   },
   { 
     cameraId: "CAM-NW-02", 
