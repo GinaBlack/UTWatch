@@ -133,6 +133,24 @@
   }
 }
 
+@layer components {
+  .auth-input {
+    @apply w-full px-3 py-2.5 rounded-md bg-secondary/50 border border-border text-foreground text-xs font-mono focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-muted-foreground/30;
+  }
+  .auth-phone-input {
+    @apply !w-full !bg-transparent !border-none;
+  }
+  .auth-phone-button {
+    @apply !bg-secondary/50 !border-border !rounded-l-md !border-y !border-l !transition-all hover:!bg-secondary;
+  }
+  .react-tel-input .country-list {
+    @apply !bg-card !border-border !text-foreground !font-mono !text-[10px];
+  }
+  .react-tel-input .country-list .country:hover, .react-tel-input .country-list .country.highlight {
+    @apply !bg-primary/20;
+  }
+}
+
 @layer utilities {
   .font-mono-display {
     font-family: var(--font-display);

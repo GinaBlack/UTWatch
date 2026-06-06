@@ -1,11 +1,22 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Camera, AlertTriangle, Circle, ZoomIn, ZoomOut, Crosshair, Layers, Navigation, Info, Map as MapIcon, X } from "lucide-react";
+import { Camera, AlertTriangle, Circle, ZoomIn, ZoomOut, Crosshair, Layers, Navigation, Info, Map as MapIcon, X, MapPin } from "lucide-react";
 import { useTheme } from "@/components/ThemeProvider";
 import { useNavigate } from "react-router-dom";
+import { db } from "@/firebase/firebase_config";
+import { collection, onSnapshot, query } from "firebase/firestore";
 
 // Declare Leaflet global
 declare const L: any;
+
+interface CameraData {
+  id: string;
+  name: string;
+  status: string;
+  lat: number;
+  lng: number;
+  location: string;
+}
 
 const MapViewPage = () => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -14,6 +25,8 @@ const MapViewPage = () => {
   const { theme } = useTheme();
   const navigate = useNavigate();
 
+  const [cameras, setCameras] = useState<CameraData[]>([]);
+  const [loading, setLoading] = useState(true);
   const [realMetrics, setRealMetrics] = useState<any>(null);
   const [realAlerts, setRealAlerts] = useState<any[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<string | null>(null);
@@ -21,13 +34,39 @@ const MapViewPage = () => {
   const [showCameras, setShowCameras] = useState(true);
   const [showIncidents, setShowIncidents] = useState(true);
 
-  // Fetch Data
+  // Fetch Cameras from Firestore
+  useEffect(() => {
+    const q = query(collection(db, "cameras"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const camsData: CameraData[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.lat && data.lng) {
+          camsData.push({ 
+            id: doc.id, 
+            name: data.name, 
+            status: data.status, 
+            lat: data.lat, 
+            lng: data.lng,
+            location: data.location
+          });
+        }
+      });
+      setCameras(camsData);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Fetch Live Data
   useEffect(() => {
     const fetchData = async () => {
       try {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
         const [mRes, aRes] = await Promise.all([
-          fetch('http://localhost:5000/api/metrics'),
-          fetch('http://localhost:5000/api/alerts')
+          fetch(`${backendUrl}/api/metrics`),
+          fetch(`${backendUrl}/api/alerts`)
         ]);
         const mData = await mRes.json();
         const aData = await aRes.json();
@@ -42,21 +81,18 @@ const MapViewPage = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Map Cameras Data
-  const cameraLocations = useMemo(() => [
-    { id: "CAM-NW-01", name: "Main St & 5th Ave", lat: 40.7128, lng: -74.0060 },
-    { id: "CAM-NE-02", name: "Highway 101 North", lat: 40.7250, lng: -73.9950 },
-    { id: "CAM-SW-03", name: "Oak Boulevard", lat: 40.7010, lng: -74.0150 },
-  ], []);
-
   // Initialize Map
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
     const checkLeaflet = setInterval(() => {
       if (typeof L !== 'undefined') {
         clearInterval(checkLeaflet);
+        
+        // Use first camera or default to New York
+        const center: [number, number] = cameras.length > 0 ? [cameras[0].lat, cameras[0].lng] : [40.7128, -74.0060];
+        
         mapRef.current = L.map(mapContainerRef.current, {
-          center: [40.7128, -74.0060],
+          center: center,
           zoom: 14,
           zoomControl: false,
           attributionControl: false
@@ -69,7 +105,7 @@ const MapViewPage = () => {
       clearInterval(checkLeaflet);
       if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
     };
-  }, []);
+  }, [loading]); // Re-init when cameras load
 
   // Update Markers
   const updateMarkers = () => {
@@ -78,8 +114,7 @@ const MapViewPage = () => {
     markersRef.current = {};
 
     if (showCameras) {
-      cameraLocations.forEach(cam => {
-        const stats = realMetrics?.camera_breakdown?.[cam.id] || { vehicle: 0 };
+      cameras.forEach(cam => {
         const hasAlert = realAlerts.some(a => a.camera_id === cam.id);
         const color = hasAlert ? '#ef4444' : '#0ea5e9';
         
@@ -99,11 +134,12 @@ const MapViewPage = () => {
     }
 
     if (showIncidents) {
-      realAlerts.slice(0, 5).forEach((inc, idx) => {
-        // Since alerts don't have lat/lng, we'll pin them near their camera or random offset for demo
-        const cam = cameraLocations.find(c => c.id === inc.camera_id) || cameraLocations[0];
-        const offsetLat = (Math.random() - 0.5) * 0.005;
-        const offsetLng = (Math.random() - 0.5) * 0.005;
+      realAlerts.slice(0, 10).forEach((inc, idx) => {
+        const cam = cameras.find(c => c.id === inc.camera_id);
+        if (!cam) return;
+
+        const offsetLat = (Math.random() - 0.5) * 0.002;
+        const offsetLng = (Math.random() - 0.5) * 0.002;
         const color = '#ef4444';
         
         const marker = L.divIcon({
@@ -122,9 +158,9 @@ const MapViewPage = () => {
     }
   };
 
-  useEffect(() => { updateMarkers(); }, [showCameras, showIncidents, realMetrics, realAlerts]);
+  useEffect(() => { updateMarkers(); }, [showCameras, showIncidents, realMetrics, realAlerts, cameras]);
 
-  const selectedCam = cameraLocations.find(c => c.id === selectedCamera);
+  const selectedCam = cameras.find(c => c.id === selectedCamera);
   const selectedInc = typeof selectedIncident === 'number' ? realAlerts[selectedIncident] : null;
 
   return (
@@ -154,12 +190,25 @@ const MapViewPage = () => {
             <button onClick={() => mapRef.current?.zoomIn()} className="p-1.5 rounded hover:bg-primary/20 transition-colors"><ZoomIn className="h-4 w-4 text-muted-foreground" /></button>
             <button onClick={() => mapRef.current?.zoomOut()} className="p-1.5 rounded hover:bg-primary/20 transition-colors"><ZoomOut className="h-4 w-4 text-muted-foreground" /></button>
           </div>
-          <button onClick={() => mapRef.current?.setView([40.7128, -74.0060], 14)} className="p-2 bg-secondary/50 rounded-md border border-border/50 hover:bg-primary/10 transition-colors"><Crosshair className="h-4 w-4 text-muted-foreground" /></button>
+          <button onClick={() => {
+            if (cameras.length > 0) mapRef.current?.setView([cameras[0].lat, cameras[0].lng], 14);
+          }} className="p-2 bg-secondary/50 rounded-md border border-border/50 hover:bg-primary/10 transition-colors"><Crosshair className="h-4 w-4 text-muted-foreground" /></button>
         </div>
       </div>
 
       <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-4 gap-3">
         <div className="lg:col-span-3 glass-panel relative overflow-hidden group bg-background/50">
+          {loading ? (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/50 backdrop-blur-sm">
+               <p className="font-mono text-xs animate-pulse">Loading camera coordinates...</p>
+            </div>
+          ) : cameras.length === 0 ? (
+            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/50 backdrop-blur-sm text-center p-6">
+              <AlertCircle className="h-10 w-10 text-muted-foreground/30 mb-4" />
+              <h3 className="font-mono font-bold text-sm uppercase mb-2">No Geographic Data</h3>
+              <p className="text-[10px] font-mono text-muted-foreground uppercase max-w-[280px]">Please register cameras with map coordinates in the Camera Management section.</p>
+            </div>
+          ) : null}
           <div ref={mapContainerRef} className="w-full h-full z-10" />
         </div>
 
@@ -168,11 +217,11 @@ const MapViewPage = () => {
             {selectedCam ? (
               <motion.div key={selectedCam.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="glass-panel p-5 border-l-4 border-l-primary">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2"><Camera className="h-5 w-5 text-primary" /><h3 className="text-sm font-bold font-mono text-foreground">{selectedCam.id}</h3></div>
+                  <div className="flex items-center gap-2"><Camera className="h-5 w-5 text-primary" /><h3 className="text-sm font-bold font-mono text-foreground">{selectedCam.name}</h3></div>
                   <button onClick={() => setSelectedCamera(null)}><X className="h-4 w-4" /></button>
                 </div>
                 <div className="space-y-2">
-                  <div className="p-2 bg-secondary/50 rounded border border-border/50"><p className="text-[8px] font-mono text-muted-foreground uppercase">Location</p><p className="text-xs font-bold">{selectedCam.name}</p></div>
+                  <div className="p-2 bg-secondary/50 rounded border border-border/50"><p className="text-[8px] font-mono text-muted-foreground uppercase">Description</p><p className="text-xs font-bold">{selectedCam.location}</p></div>
                   <div className="grid grid-cols-2 gap-2">
                     <div className="p-2 bg-secondary/50 rounded border border-border/50"><p className="text-[8px] font-mono text-muted-foreground uppercase">Vehicles</p><span className="text-xs font-bold font-mono">{realMetrics?.camera_breakdown?.[selectedCam.id]?.vehicle || 0}</span></div>
                     <div className="p-2 bg-secondary/50 rounded border border-border/50"><p className="text-[8px] font-mono text-muted-foreground uppercase">Accidents</p><span className="text-xs font-bold font-mono text-destructive">{realMetrics?.camera_breakdown?.[selectedCam.id]?.accident || 0}</span></div>
@@ -199,12 +248,15 @@ const MapViewPage = () => {
           <div className="glass-panel flex-1 flex flex-col min-h-0 overflow-hidden">
             <div className="p-3 border-b border-border/50 bg-secondary/30 flex justify-between items-center"><h3 className="text-[10px] font-mono font-bold uppercase tracking-widest text-muted-foreground">Node Registry</h3><Layers className="h-3 w-3 text-primary opacity-50" /></div>
             <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
-              {cameraLocations.map(cam => (
+              {cameras.map(cam => (
                 <button key={cam.id} onClick={() => { setSelectedCamera(cam.id); setSelectedIncident(null); mapRef.current?.setView([cam.lat, cam.lng], 16); }} className={`w-full flex items-center justify-between p-2 rounded text-[10px] font-mono ${selectedCamera === cam.id ? "bg-primary/10 border border-primary/30" : "hover:bg-secondary/50"}`}>
-                  <span className="font-bold">{cam.id}</span>
+                  <span className="font-bold truncate max-w-[100px]">{cam.name}</span>
                   <span className="text-primary">{realMetrics?.camera_breakdown?.[cam.id]?.vehicle || 0} v</span>
                 </button>
               ))}
+              {cameras.length === 0 && !loading && (
+                 <div className="p-4 text-center text-[8px] text-muted-foreground uppercase">No cameras found</div>
+              )}
             </div>
           </div>
         </div>

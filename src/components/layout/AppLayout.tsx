@@ -1,22 +1,25 @@
-import { Shield, Sun, Moon, Bell, Settings, Map, BarChart3, Monitor, LogOut, Menu, X, FileText, Video, History, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
+import { Shield, Sun, Moon, Bell, Settings, Map, BarChart3, Monitor, LogOut, Menu, X, FileText, Video, History, AlertTriangle, ChevronLeft, ChevronRight, ShieldCheck, Play } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useTheme, useAuth, useNotifications } from "@/components/ThemeProvider";
 import { useState } from "react";
+import { logSystemAction } from "@/lib/audit";
 
 interface AppLayoutProps {
   children: React.ReactNode;
 }
 
 const navLinks = [
-  { path: "/dashboard", label: "Dashboard", icon: Monitor },
-  { path: "/cameras", label: "Cameras", icon: Video },
-  { path: "/map", label: "Map View", icon: Map },
-  { path: "/analytics", label: "Analytics", icon: BarChart3 },
-  { path: "/reports", label: "Reports", icon: FileText },
-  { path: "/logs", label: "System Logs", icon: History },
-  { path: "/alerts", label: "Alerts", icon: AlertTriangle },
-  { path: "/notifications", label: "Notifications", icon: Bell },
-  { path: "/settings", label: "Settings", icon: Settings },
+  { path: "/dashboard", label: "Dashboard", icon: Monitor, roles: ["Administrator", "Traffic Officer", "Emergency Responder"] },
+  { path: "/cameras", label: "Cameras", icon: Video, roles: ["Administrator", "Traffic Officer", "Emergency Responder"] },
+  { path: "/recordings", label: "Recordings", icon: Play, roles: ["Administrator", "Traffic Officer"] },
+  { path: "/map", label: "Map View", icon: Map, roles: ["Administrator", "Traffic Officer", "Emergency Responder"] },
+  { path: "/analytics", label: "Analytics", icon: BarChart3, roles: ["Administrator", "Traffic Officer"] },
+  { path: "/reports", label: "Reports", icon: FileText, roles: ["Administrator", "Traffic Officer"] },
+  { path: "/logs", label: "Audit Trail", icon: History, roles: ["Administrator"] },
+  { path: "/alerts", label: "Alerts", icon: AlertTriangle, roles: ["Administrator", "Traffic Officer", "Emergency Responder"] },
+  { path: "/notifications", label: "Notifications", icon: Bell, roles: ["Administrator", "Traffic Officer", "Emergency Responder"] },
+  { path: "/users", label: "User Management", icon: ShieldCheck, roles: ["Administrator"] },
+  { path: "/settings", label: "System Config", icon: Settings, roles: ["Administrator"] },
 ];
 
 const AppLayout = ({ children }: AppLayoutProps) => {
@@ -28,17 +31,29 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  const handleLogout = () => {
-    logout();
-    navigate("/");
+  const filteredLinks = navLinks.filter(link => user && link.roles.includes(user.role));
+
+  const handleLogout = async () => {
+    if (user) {
+      await logSystemAction({
+        userId: user.uid,
+        userName: user.name,
+        userRole: user.role,
+        action: "LOGOUT",
+        resource: "AUTH",
+        details: `User ${user.name} logged out of the system.`
+      });
+    }
+    await logout();
+    navigate("/auth");
   };
 
   return (
     <div className="h-screen bg-background flex p-3 gap-3 overflow-hidden">
       {/* Sidebar - Desktop & Tablet */}
-      <aside className={`hidden md:flex flex-col ${isCollapsed ? "w-20" : "w-64"} glass-panel shrink-0 transition-all duration-300 relative`}>
+      <aside className={`hidden md:flex flex-col ${isCollapsed ? "w-20" : "w-52"} glass-panel shrink-0 transition-all duration-300 relative`}>
         <div className={`p-6 flex items-center ${isCollapsed ? "justify-center" : "gap-1"} border-b border-border/50`}>
-          <img src="/logo.png" alt="Logo" className="h-12 w-12 object-contain  shrink-0" />
+          <img src="/logo.png" alt="Logo" className="h-8 w-8 object-contain  shrink-0" />
           {!isCollapsed && (
             <span className="font-mono font-bold text-sm tracking-wider text-foreground truncate">
               UT WATCH
@@ -53,7 +68,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
         </div>
 
         <nav className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-none">
-          {navLinks.map(link => {
+          {filteredLinks.map(link => {
             const isActive = location.pathname === link.path;
             return (
               <button
@@ -76,8 +91,8 @@ const AppLayout = ({ children }: AppLayoutProps) => {
         <div className="p-4 border-t border-border/50 space-y-2">
           {user && !isCollapsed && (
             <div className="px-4 py-2 mb-2 rounded bg-secondary/50 border border-border/30">
-              <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-tighter">Current User</p>
-              <p className="text-xs font-mono font-bold truncate">{user.name}</p>
+              <p className="text-[8px] font-mono text-primary uppercase tracking-tighter mb-0.5">{user.role}</p>
+              <p className="text-xs font-mono font-bold truncate">{user.name || user.email}</p>
             </div>
           )}
           <button 
@@ -111,7 +126,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
               </button>
             </div>
             <nav className="flex-1 overflow-y-auto p-4 space-y-1">
-              {navLinks.map(link => {
+              {filteredLinks.map(link => {
                 const isActive = location.pathname === link.path;
                 return (
                   <button

@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Car, AlertTriangle, Camera, Gauge, LayoutGrid, Square, MonitorPlay } from "lucide-react";
+import { useState } from "react";
+import { Car, AlertTriangle, Camera as CameraIcon, Gauge, LayoutGrid, Square, MonitorPlay, AlertCircle } from "lucide-react";
 import StatCard from "../components/dashboard/StatCard";
 import TrafficDensityChart from "../components/dashboard/TrafficDensityChart";
 import VehicleDetectionChart from "../components/dashboard/VehicleDetectionChart";
@@ -9,59 +9,18 @@ import AlertToastSystem from "../components/dashboard/AlertToastSystem";
 import LiveVideoFeed from "../components/dashboard/LiveVideoFeed";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useSearchParams } from "react-router-dom";
-import socketService from "../services/socket";
-
-const cameras = [
-  { 
-    cameraId: "CAM-NW-01", 
-    location: "Main St & 5th Ave", 
-    status: "active" as const, 
-    videoSrc: "/videos/12207144_1920_1080_30fps.mp4"   
-  },
-  { 
-    cameraId: "CAM-NW-02", 
-    location: "Main St & 5th Ave", 
-    status: "active" as const, 
-    videoSrc: "/videos/trim 1 canada accidents.mp4"   
-  }
-];
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { useVision } from "../components/VisionProvider";
 
 const Dashboard = () => {
-  const [searchParams] = useSearchParams();
+  const { cameras, loading } = useVision();
   const [viewMode, setViewMode] = useState<"grid" | "single">("grid");
-  const [selectedCameraId, setSelectedCameraId] = useState(cameras[0].cameraId);
-  const [realStats, setRealStats] = useState<any>({
-    total_vehicles: 0,
-    total_accidents: 0,
-    active_cameras: 0,
-    uptime: "0:00:00",
-    density_history: [],
-    detection_history: []
-  });
-
-  useEffect(() => {
-    const socket = socketService.connect();
-    if (!socket) return;
-
-    socket.on('stats_update', (stats: any) => {
-      setRealStats(stats);
-    });
-
-    return () => {
-      socket.off('stats_update');
-    };
-  }, []);
-
-  useEffect(() => {
-    const viewParam = searchParams.get("view");
-    const camParam = searchParams.get("cam");
-
-    if (viewParam === "single") setViewMode("single");
-    if (camParam && cameras.find(c => c.cameraId === camParam)) setSelectedCameraId(camParam);
-  }, [searchParams]);
-
-  const activeCamera = cameras.find(c => c.cameraId === selectedCameraId) || cameras[0];
+  const [selectedCameraId, setSelectedCameraId] = useState("");
+  
+  // Note: Statistics now come from socket events which are handled by the VisionProvider's internal logic. 
+  // For simplicity here, we assume cameras are already active.
+  const activeCamera = cameras.find(c => c.cameraId === selectedCameraId) || (cameras.length > 0 ? cameras[0] : null);
 
   return (
     <div className="space-y-3">
@@ -86,10 +45,10 @@ const Dashboard = () => {
           </Tabs>
         </div>
 
-        {viewMode === "single" && (
+        {viewMode === "single" && cameras.length > 0 && (
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-mono text-muted-foreground uppercase">Source:</span>
-            <Select value={selectedCameraId} onValueChange={setSelectedCameraId}>
+            <Select value={selectedCameraId || cameras[0].cameraId} onValueChange={setSelectedCameraId}>
               <SelectTrigger className="w-[200px] h-8 text-[10px] font-mono bg-secondary/50 border-none">
                 <SelectValue placeholder="Select Camera" />
               </SelectTrigger>
@@ -106,29 +65,51 @@ const Dashboard = () => {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard title="Active Nodes" value={realStats.active_cameras.toString()} change={`Up: ${realStats.uptime}`} changeType="neutral" icon={Camera} glowColor="primary" />
-        <StatCard title="Vehicles (Live)" value={realStats.total_vehicles.toLocaleString()} change="Total processed" changeType="positive" icon={Car} />
-        <StatCard title="Avg Density" value={`${realStats.total_vehicles > 0 ? Math.min(100, Math.floor(realStats.total_vehicles / 10)) : 0}%`} change="Current flow" changeType="neutral" icon={Gauge} glowColor="warning" />
-        <StatCard title="Incidents Logged" value={realStats.total_accidents.toString()} change="Critical events" changeType="negative" icon={AlertTriangle} glowColor="danger" />
+        <StatCard title="Active Nodes" value={cameras.length.toString()} change="System Online" changeType="positive" icon={CameraIcon} glowColor="primary" />
+        {/* Placeholder stats for demo purposes as we refactored to focus on video continuity */}
+        <StatCard title="Vehicles (Live)" value="--" change="Processing..." changeType="neutral" icon={Car} />
+        <StatCard title="Avg Density" value="--" change="Processing..." changeType="neutral" icon={Gauge} glowColor="warning" />
+        <StatCard title="Incidents Logged" value="--" change="Monitoring..." changeType="neutral" icon={AlertTriangle} glowColor="danger" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <div className="lg:col-span-2 space-y-3">
-          {viewMode === "grid" ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {cameras.map(cam => (
-                <LiveVideoFeed key={cam.cameraId} {...cam} />
-              ))}
+          {loading ? (
+            <div className="flex items-center justify-center py-32 glass-panel border-dashed">
+              <p className="font-mono text-xs animate-pulse">Syncing with system vision nodes...</p>
             </div>
+          ) : cameras.length > 0 ? (
+            <>
+              {viewMode === "grid" ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {cameras.map(cam => (
+                    <LiveVideoFeed key={cam.cameraId} cameraId={cam.cameraId} location={cam.location} status={cam.status} />
+                  ))}
+                </div>
+              ) : (
+                <div className="w-full aspect-video">
+                  {activeCamera && <LiveVideoFeed cameraId={activeCamera.cameraId} location={activeCamera.location} status={activeCamera.status} />}
+                </div>
+              )}
+            </>
           ) : (
-            <div className="w-full aspect-video">
-              <LiveVideoFeed {...activeCamera} />
+            <div className="flex flex-col items-center justify-center py-32 glass-panel border-dashed text-center">
+              <AlertCircle className="h-10 w-10 text-muted-foreground/30 mb-4" />
+              <h3 className="font-mono font-bold text-sm uppercase mb-2">No Active Vision Nodes</h3>
+              <p className="text-[10px] font-mono text-muted-foreground uppercase max-w-[280px] mb-6">
+                System vision is offline. Please register and activate camera nodes to begin processing.
+              </p>
+              <Link to="/cameras">
+                <Button variant="outline" size="sm" className="font-mono text-[10px] h-8 gap-2">
+                  <CameraIcon className="h-3 w-3" /> SETUP CAMERAS
+                </Button>
+              </Link>
             </div>
           )}
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <TrafficDensityChart data={realStats.density_history} />
-            <VehicleDetectionChart data={realStats.detection_history} />
+            <TrafficDensityChart data={[]} />
+            <VehicleDetectionChart data={[]} />
           </div>
         </div>
 

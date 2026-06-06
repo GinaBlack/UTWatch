@@ -15,7 +15,8 @@ const AnalyticsPage = () => {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/metrics');
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+        const response = await fetch(`${backendUrl}/api/metrics`);
         const data = await response.json();
         setRealStats(data);
       } catch (err) {

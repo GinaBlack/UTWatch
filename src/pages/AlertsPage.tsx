@@ -2,22 +2,53 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { AlertTriangle, Clock, CheckCheck, Filter, Search, Trash2 } from "lucide-react";
 import { ShieldAlert } from "lucide-react";
-import { useNotifications } from "@/components/ThemeProvider";
+import { useNotifications, useAuth } from "@/components/ThemeProvider";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { logSystemAction } from "@/lib/audit";
 
 const AlertsPage = () => {
+  const { user } = useAuth();
   const { notifications, markAllNotificationsRead, clearNotifications } = useNotifications();
   const [filter, setFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
 
+  const isEmergencyResponder = user?.role === "Emergency Responder";
+
+  const handleMarkAllRead = async () => {
+    if (isEmergencyResponder) return;
+    markAllNotificationsRead();
+    if (user) {
+      await logSystemAction({
+        userId: user.uid,
+        userName: user.name,
+        userRole: user.role,
+        action: "ALERTS_MARK_READ",
+        resource: "ALERTS_UI",
+        details: `${user.name} marked all active notifications as read.`
+      });
+    }
+  };
+
   const handleClearAll = async () => {
+    if (isEmergencyResponder) return;
     try {
-      const response = await fetch('http://localhost:5000/api/alerts/clear', { method: 'POST' });
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+      const response = await fetch(`${backendUrl}/api/alerts/clear`, { method: 'POST' });
       if (response.ok) {
         clearNotifications();
+        if (user) {
+          await logSystemAction({
+            userId: user.uid,
+            userName: user.name,
+            userRole: user.role,
+            action: "CLEAR_ALERTS",
+            resource: "ALERTS_DATABASE",
+            details: `${user.name} permanently cleared all safety alerts from the system database.`
+          });
+        }
         toast.success("Alert history cleared successfully");
       }
     } catch (err) {
@@ -53,7 +84,8 @@ const AlertsPage = () => {
             variant="outline" 
             size="sm" 
             className="font-mono text-[10px] h-8 gap-1.5 border-border/50"
-            onClick={() => markAllNotificationsRead()}
+            onClick={handleMarkAllRead}
+            disabled={isEmergencyResponder}
           >
             <CheckCheck className="h-3.5 w-3.5" /> MARK ALL READ
           </Button>
@@ -62,6 +94,7 @@ const AlertsPage = () => {
             size="sm" 
             className="font-mono text-[10px] h-8 gap-1.5"
             onClick={handleClearAll}
+            disabled={isEmergencyResponder}
           >
             <Trash2 className="h-3.5 w-3.5" /> CLEAR ALL
           </Button>

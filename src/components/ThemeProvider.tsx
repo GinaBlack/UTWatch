@@ -1,10 +1,19 @@
 import { useState, useEffect, createContext, useContext } from "react";
+import { auth, db } from "../firebase/firebase_config";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
+import { logSystemAction } from "../lib/audit";
 
 type Theme = "dark" | "light";
 
+export type UserRole = "Administrator" | "Traffic Officer" | "Emergency Responder";
+
 interface AuthUser {
-  email: string;
-  name: string;
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  role: UserRole;
+  emailVerified: boolean;
 }
 
 export interface AppNotification {
@@ -26,9 +35,8 @@ interface AppContextType {
   theme: Theme;
   toggleTheme: () => void;
   user: AuthUser | null;
-  login: (email: string, password: string) => boolean;
-  signup: (name: string, email: string, password: string) => boolean;
-  logout: () => void;
+  loading: boolean;
+  logout: () => Promise<void>;
   notifications: AppNotification[];
   unreadCount: number;
   addNotification: (notification: Omit<AppNotification, "id" | "read">) => void;
@@ -41,9 +49,8 @@ const AppContext = createContext<AppContextType>({
   theme: "dark",
   toggleTheme: () => {},
   user: null,
-  login: () => false,
-  signup: () => false,
-  logout: () => {},
+  loading: true,
+  logout: async () => {},
   notifications: [],
   unreadCount: 0,
   addNotification: () => {},
@@ -58,8 +65,8 @@ export const useTheme = () => {
 };
 
 export const useAuth = () => {
-  const { user, login, signup, logout } = useContext(AppContext);
-  return { user, login, signup, logout };
+  const { user, loading, logout } = useContext(AppContext);
+  return { user, loading, logout };
 };
 
 export const useNotifications = () => {
@@ -67,27 +74,57 @@ export const useNotifications = () => {
   return { notifications, unreadCount, addNotification, clearNotifications, markNotificationRead, markAllNotificationsRead };
 };
 
-// Demo accounts store
-const DEMO_ACCOUNTS = [
-  { email: "admin@traffic.io", password: "admin123", name: "Admin User" },
-  { email: "operator@traffic.io", password: "operator123", name: "Operator" },
-];
-
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
   const [theme, setTheme] = useState<Theme>(() => {
     const stored = localStorage.getItem("theme") as Theme | null;
     return stored || "dark";
   });
 
-  const [user, setUser] = useState<AuthUser | null>(() => {
-    const stored = localStorage.getItem("auth_user");
-    return stored ? JSON.parse(stored) : null;
-  });
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
     const stored = localStorage.getItem("traffic_notifications");
     return stored ? JSON.parse(stored) : INITIAL_NOTIFICATIONS;
   });
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setLoading(true);
+      if (firebaseUser) {
+        try {
+          // Fetch user profile from Firestore
+          const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            setUser({
+              uid: firebaseUser.uid,
+              email: firebaseUser.email,
+              displayName: userData.fullName || firebaseUser.displayName,
+              role: userData.role as UserRole,
+              emailVerified: firebaseUser.emailVerified,
+            });
+          } else {
+            // Fallback if doc doesn't exist (e.g. initial Google login before profile creation)
+            setUser({
+              uid: firebaseUser.uid,
+              email: firebaseUser.email,
+              displayName: firebaseUser.displayName,
+              role: "Emergency Responder", // Default role
+              emailVerified: firebaseUser.emailVerified,
+            });
+          }
+        } catch (error) {
+          console.error("Error fetching user profile:", error);
+        }
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -101,34 +138,19 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
 
   const toggleTheme = () => setTheme(prev => (prev === "dark" ? "light" : "dark"));
 
-  const login = (email: string, password: string): boolean => {
-    const accounts = JSON.parse(localStorage.getItem("registered_accounts") || "[]");
-    const allAccounts = [...DEMO_ACCOUNTS, ...accounts];
-    const found = allAccounts.find(a => a.email === email && a.password === password);
-    if (found) {
-      const authUser = { email: found.email, name: found.name };
-      setUser(authUser);
-      localStorage.setItem("auth_user", JSON.stringify(authUser));
-      return true;
+  const logout = async () => {
+    if (user) {
+      await logSystemAction({
+        userId: user.uid,
+        userName: user.displayName || user.email || "Unknown",
+        userRole: user.role,
+        action: "LOGOUT",
+        resource: "AUTH",
+        details: "User logged out of session"
+      });
     }
-    return false;
-  };
-
-  const signup = (name: string, email: string, password: string): boolean => {
-    const accounts = JSON.parse(localStorage.getItem("registered_accounts") || "[]");
-    const allAccounts = [...DEMO_ACCOUNTS, ...accounts];
-    if (allAccounts.find(a => a.email === email)) return false;
-    accounts.push({ email, password, name });
-    localStorage.setItem("registered_accounts", JSON.stringify(accounts));
-    const authUser = { email, name };
-    setUser(authUser);
-    localStorage.setItem("auth_user", JSON.stringify(authUser));
-    return true;
-  };
-
-  const logout = () => {
+    await signOut(auth);
     setUser(null);
-    localStorage.removeItem("auth_user");
   };
 
   const unreadCount = notifications.filter(notification => !notification.read).length;
@@ -150,7 +172,19 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <AppContext.Provider value={{ theme, toggleTheme, user, login, signup, logout, notifications, unreadCount, addNotification, clearNotifications, markNotificationRead, markAllNotificationsRead }}>
+    <AppContext.Provider value={{ 
+      theme, 
+      toggleTheme, 
+      user, 
+      loading, 
+      logout, 
+      notifications, 
+      unreadCount, 
+      addNotification, 
+      clearNotifications, 
+      markNotificationRead, 
+      markAllNotificationsRead 
+    }}>
       {children}
     </AppContext.Provider>
   );

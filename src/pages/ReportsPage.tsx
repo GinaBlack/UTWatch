@@ -3,15 +3,19 @@ import { FileText, Download, FileSpreadsheet, File as FilePdf, Loader2 } from "l
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useAuth } from "@/components/ThemeProvider";
+import { logSystemAction } from "@/lib/audit";
 
 const ReportsPage = () => {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
 
   useEffect(() => {
     const fetchAlerts = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/alerts');
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+        const response = await fetch(`${backendUrl}/api/alerts`);
         const data = await response.json();
         setAlerts(data.alerts);
       } catch (err) {
@@ -23,7 +27,17 @@ const ReportsPage = () => {
     fetchAlerts();
   }, []);
 
-  const downloadPdf = () => {
+  const downloadPdf = async () => {
+    if (user) {
+      await logSystemAction({
+        userId: user.uid,
+        userName: user.name,
+        userRole: user.role,
+        action: "FILE_DOWNLOAD",
+        resource: "REPORTS_PDF",
+        details: `${user.name} generated a PDF incident report with ${alerts.length} records.`
+      });
+    }
     const printContent = `
       <html>
         <head>
@@ -55,7 +69,7 @@ const ReportsPage = () => {
             <tbody>
               ${alerts.map(alert => `
                 <tr>
-                  <td>${new Date(alert.timestamp * 1000).toLocaleString()}</td>
+                  <td>${new Date(alert.timestamp).toLocaleString()}</td>
                   <td>${alert.type.toUpperCase()}</td>
                   <td>${alert.camera_id}</td>
                   <td>${alert.details}</td>
@@ -75,10 +89,20 @@ const ReportsPage = () => {
     }
   };
 
-  const downloadExcel = () => {
+  const downloadExcel = async () => {
+    if (user) {
+      await logSystemAction({
+        userId: user.uid,
+        userName: user.name,
+        userRole: user.role,
+        action: "FILE_DOWNLOAD",
+        resource: "REPORTS_CSV",
+        details: `${user.name} exported incident data to CSV with ${alerts.length} records.`
+      });
+    }
     const headers = ["Timestamp", "Type", "Camera_ID", "Details"];
     const rows = alerts.map(alert => [
-      new Date(alert.timestamp * 1000).toISOString(),
+      new Date(alert.timestamp).toISOString(),
       alert.type,
       alert.camera_id,
       alert.details
@@ -146,7 +170,7 @@ const ReportsPage = () => {
                 {alerts.map((alert, i) => (
                   <TableRow key={i} className="border-border/50 hover:bg-secondary/20 transition-colors">
                     <TableCell className="font-mono text-[11px] text-muted-foreground whitespace-nowrap">
-                      {new Date(alert.timestamp * 1000).toLocaleString()}
+                      {new Date(alert.timestamp).toLocaleString()}
                     </TableCell>
                     <TableCell>
                       <span className="px-2 py-0.5 rounded bg-destructive/10 text-destructive text-[9px] font-bold font-mono border border-destructive/20">

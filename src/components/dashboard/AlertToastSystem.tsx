@@ -43,7 +43,8 @@ const AlertToastSystem = () => {
     // 1. Fetch History
     const fetchHistory = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/alerts');
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+        const response = await fetch(`${backendUrl}/api/alerts`);
         const data = await response.json();
         
         console.log("Fetched historical alerts:", data.alerts.length);
@@ -51,12 +52,13 @@ const AlertToastSystem = () => {
         // Seed history into the UI
         data.alerts.forEach((alert: any) => {
           const typeStr = alert.type.replace(/_/g, ' ').toUpperCase();
+          const date = new Date(alert.timestamp);
           addNotification({
             type: "accident",
             title: `🚨 ${typeStr} (HISTORY)`,
-            description: `${alert.camera_id}: ${alert.details} recorded on ${new Date(alert.timestamp * 1000).toLocaleString()}`,
+            description: `${alert.camera_id}: ${alert.details} recorded on ${date.toLocaleString()}`,
             severity: "critical",
-            time: new Date(alert.timestamp * 1000).toLocaleTimeString(),
+            time: date.toLocaleTimeString(),
           });
         });
       } catch (err) {

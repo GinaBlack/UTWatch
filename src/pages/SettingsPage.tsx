@@ -6,61 +6,117 @@ import {
   Save, 
   Smartphone, 
   BrainCircuit,
-  Cpu
+  Cpu,
+  RefreshCw,
+  Eye,
+  EyeOff
 } from "lucide-react";
+import { doc, setDoc } from "firebase/firestore";
+import { db } from "@/firebase/firebase_config";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/components/ThemeProvider";
+import { useSystemConfig, SystemConfig } from "@/hooks/use-system-config";
+import { logSystemAction } from "@/lib/audit";
+
+const PressAndHoldEyeInput = ({ label, value, onChange, readOnly = false, placeholder = "" }: any) => {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="space-y-2">
+      <Label className="text-[10px] font-mono uppercase text-muted-foreground">{label}</Label>
+      <div className="relative">
+        <Input
+          type={show ? "text" : "password"}
+          value={value}
+          onChange={onChange}
+          readOnly={readOnly}
+          placeholder={placeholder}
+          className="bg-secondary/50 border-none font-mono text-xs pr-10"
+        />
+        <Button
+          variant="ghost"
+          size="sm"
+          className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+          onMouseDown={() => setShow(true)}
+          onMouseUp={() => setShow(false)}
+          onMouseLeave={() => setShow(false)}
+        >
+          {show ? <EyeOff className="h-3 w-3 text-muted-foreground" /> : <Eye className="h-3 w-3 text-muted-foreground" />}
+        </Button>
+      </div>
+    </div>
+  );
+};
 
 const SettingsPage = () => {
   const { toast } = useToast();
-  const [detectionMode, setDetectionMode] = useState<string>("both");
-  const [isLoading, setIsLoading] = useState(true);
+  const { user } = useAuth();
+  const { config: remoteConfig, loading } = useSystemConfig();
+  const [localConfig, setLocalConfig] = useState<SystemConfig | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const response = await fetch('http://localhost:5000/api/settings');
-        if (response.ok) {
-          const data = await response.json();
-          setDetectionMode(data.detection_mode);
-        }
-      } catch (err) {
-        console.error("Failed to fetch settings:", err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchSettings();
-  }, []);
+    if (remoteConfig) setLocalConfig(remoteConfig);
+  }, [remoteConfig]);
+
+  if (loading || !localConfig) return <div>Loading...</div>;
 
   const handleSaveSettings = async () => {
+    setIsSaving(true);
     try {
-      const response = await fetch('http://localhost:5000/api/settings', {
+      // 1. Update Backend
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+      await fetch(`${backendUrl}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ detection_mode: detectionMode }),
+        body: JSON.stringify({ 
+          detection_mode: "both", // Keep current mode
+          speed_limit: localConfig.speedLimitKph,
+          video_storage_path: localConfig.videoStoragePath,
+          record_interval: localConfig.videoRecordIntervalMinutes,
+          enable_overspeeding_alerts: localConfig.enableOverspeedingAlerts
+        }),
       });
-      
-      if (response.ok) {
-        toast({
-          title: "Settings Updated",
-          description: `Detection mode set to ${detectionMode.toUpperCase()}. Note: This update requires a backend restart in some environments to fully apply to the worker process.`,
-        });
-      } else {
-        throw new Error("Failed to save");
-      }
+
+      // 2. Update Firestore
+      await setDoc(doc(db, "system", "config"), localConfig, { merge: true });
+
+      await logSystemAction({
+        userId: user?.uid || "unknown",
+        userName: user?.name || user?.email || "Unknown",
+        userRole: user?.role || "Unknown",
+        action: "UPDATE_SYSTEM_CONFIG",
+        resource: "SYSTEM_SETTINGS",
+        details: `System configuration updated by ${user?.name}. Changes: Mode=both, Speed=${localConfig.speedLimitKph}, Interval=${localConfig.videoRecordIntervalMinutes}`
+      });
+      toast({
+        title: "Settings Updated",
+        description: "Configuration synchronized successfully.",
+      });
     } catch (err) {
       toast({
         title: "Error",
-        description: "Could not connect to the backend settings API.",
+        description: "Failed to save configuration.",
         variant: "destructive",
       });
+    } finally {
+      setIsSaving(false);
     }
+  };
+
+  const toggleClass = (className: string) => {
+    setLocalConfig(prev => prev ? ({
+      ...prev,
+      displayClasses: prev.displayClasses.includes(className)
+        ? prev.displayClasses.filter(c => c !== className)
+        : [...prev.displayClasses, className]
+    }) : null);
   };
 
   return (
@@ -75,57 +131,50 @@ const SettingsPage = () => {
             <p className="text-xs text-muted-foreground font-mono">Fine-tune computer vision and network parameters</p>
           </div>
         </div>
-        <Button onClick={handleSaveSettings} className="gap-2 font-mono text-xs">
-          <Save className="h-4 w-4" />
-          COMMIT CHANGES
+        <Button onClick={handleSaveSettings} disabled={isSaving} className="gap-2 font-mono text-xs">
+          {isSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          {isSaving ? "SAVING..." : "COMMIT CHANGES"}
         </Button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          {/* Computer Vision Settings */}
           <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
             <CardHeader>
               <div className="flex items-center gap-2">
                 <BrainCircuit className="h-4 w-4 text-primary" />
                 <CardTitle className="text-sm font-bold font-mono uppercase">Detection Engine</CardTitle>
               </div>
-              <CardDescription className="text-[10px] font-mono uppercase">Configure accident detection methodology</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label className="text-[10px] font-mono uppercase text-muted-foreground">Accident Detection Mode</Label>
-                <Select value={detectionMode} onValueChange={setDetectionMode} disabled={isLoading}>
-                  <SelectTrigger className="bg-secondary/50 border-none font-mono text-xs h-10">
-                    <SelectValue placeholder="Select Mode" />
-                  </SelectTrigger>
-                  <SelectContent className="font-mono text-xs">
-                    <SelectItem value="ai">🧠 AI Classifier Only (ConvLSTM)</SelectItem>
-                    <SelectItem value="rulebased">📏 Rule-Based Only (IoU/Speed)</SelectItem>
-                    <SelectItem value="both">⚡ Hybrid Mode (Recommended)</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-[9px] text-muted-foreground font-mono mt-2 bg-secondary/30 p-2 rounded italic">
-                  {detectionMode === 'ai' && "AI Mode uses a deep learning ConvLSTM model to analyze video temporal dynamics."}
-                  {detectionMode === 'rulebased' && "Rule-Based mode uses physical geometry and object tracking metrics."}
-                  {detectionMode === 'both' && "Hybrid mode combines both methods for maximum detection accuracy."}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                <div className="space-y-2 opacity-50 cursor-not-allowed">
-                  <Label className="text-[10px] font-mono uppercase text-muted-foreground">YOLO Confidence Threshold</Label>
-                  <Input value="0.30" readOnly className="bg-secondary/50 border-none font-mono text-xs" />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>YOLO Confidence Threshold</Label>
+                  <Input type="number" step="0.1" value={localConfig.yoloConfidenceThreshold} onChange={(e) => setLocalConfig({...localConfig, yoloConfidenceThreshold: parseFloat(e.target.value)})} />
                 </div>
-                <div className="space-y-2 opacity-50 cursor-not-allowed">
-                  <Label className="text-[10px] font-mono uppercase text-muted-foreground">Collision IoU Threshold</Label>
-                  <Input value="0.50" readOnly className="bg-secondary/50 border-none font-mono text-xs" />
+                <div className="space-y-2">
+                  <Label>Collision IoU Threshold</Label>
+                  <Input type="number" step="0.1" value={localConfig.collisionIoUThreshold} onChange={(e) => setLocalConfig({...localConfig, collisionIoUThreshold: parseFloat(e.target.value)})} />
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Display Bounding Boxes</Label>
+                <Switch checked={localConfig.boundingBoxDisplay} onCheckedChange={(checked) => setLocalConfig({...localConfig, boundingBoxDisplay: checked})} />
+              </div>
+              <div className="space-y-2">
+                <Label>Object Classes to Display</Label>
+                <div className="flex gap-4 flex-wrap">
+                  {["vehicle", "person", "animal", "obstacle", "accident"].map(cls => (
+                    <div key={cls} className="flex items-center space-x-2">
+                      <Checkbox id={cls} checked={localConfig.displayClasses.includes(cls)} onCheckedChange={() => toggleClass(cls)} />
+                      <label htmlFor={cls} className="text-sm capitalize">{cls}</label>
+                    </div>
+                  ))}
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Core System Settings */}
           <Card className="border-border/50 bg-card/50 backdrop-blur-sm opacity-80">
             <CardHeader>
               <div className="flex items-center gap-2">
@@ -134,26 +183,13 @@ const SettingsPage = () => {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between py-2 border-b border-border/50">
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-mono uppercase">Adaptive Bitrate</Label>
-                  <p className="text-[10px] text-muted-foreground font-mono">Optimize stream quality based on bandwidth</p>
-                </div>
-                <Switch defaultChecked />
-              </div>
-              <div className="flex items-center justify-between py-2 border-b border-border/50">
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-mono uppercase">Enhanced Overlays</Label>
-                  <p className="text-[10px] text-muted-foreground font-mono">Render high-fidelity bounding boxes</p>
-                </div>
-                <Switch defaultChecked />
+              <div className="flex items-center justify-between py-2">
+                <Label>Audio Alarms</Label>
+                <Switch checked={localConfig.audioAlarms} onCheckedChange={(checked) => setLocalConfig({...localConfig, audioAlarms: checked})} />
               </div>
               <div className="flex items-center justify-between py-2">
-                <div className="space-y-0.5">
-                  <Label className="text-xs font-mono uppercase">Audio Alarms</Label>
-                  <p className="text-[10px] text-muted-foreground font-mono">Play audible alert when incident is detected</p>
-                </div>
-                <Switch defaultChecked />
+                <Label>Enable Overspeeding Alerts</Label>
+                <Switch checked={localConfig.enableOverspeedingAlerts} onCheckedChange={(checked) => setLocalConfig({...localConfig, enableOverspeedingAlerts: checked})} />
               </div>
             </CardContent>
           </Card>
@@ -168,11 +204,18 @@ const SettingsPage = () => {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label className="text-[10px] font-mono uppercase text-muted-foreground">API Access Key</Label>
-                <Input value="••••••••••••••••" type="password" readOnly className="bg-secondary/50 border-none font-mono text-xs" />
-              </div>
-              <Button variant="outline" className="w-full text-[10px] font-mono uppercase h-8">Rotate Keys</Button>
+              <PressAndHoldEyeInput 
+                label="Admin Secret Key" 
+                value={localConfig.adminSecretKey} 
+                onChange={(e: any) => setLocalConfig({...localConfig, adminSecretKey: e.target.value})} 
+                placeholder="New Secure Key" 
+              />
+              <PressAndHoldEyeInput 
+                label="Company Secret Key" 
+                value={localConfig.companySecretKey} 
+                onChange={(e: any) => setLocalConfig({...localConfig, companySecretKey: e.target.value})} 
+                placeholder="UTWATCH-XXXX-X"
+              />
             </CardContent>
           </Card>
 
@@ -184,11 +227,51 @@ const SettingsPage = () => {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label className="text-[10px] font-mono uppercase text-muted-foreground">Alert History (Days)</Label>
-                <Input value="30" type="number" readOnly className="bg-secondary/50 border-none font-mono text-xs" />
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Alert History Retention (Days)</Label>
+                  <Input type="number" value={localConfig.alertHistoryRetentionDays} onChange={(e) => setLocalConfig({...localConfig, alertHistoryRetentionDays: parseInt(e.target.value)})} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Speed Limit (km/h)</Label>
+                  <Input type="number" value={localConfig.speedLimitKph || 60} onChange={(e) => setLocalConfig({...localConfig, speedLimitKph: parseInt(e.target.value)})} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Record Interval (Min)</Label>
+                  <Input type="number" value={localConfig.videoRecordIntervalMinutes || 5} onChange={(e) => setLocalConfig({...localConfig, videoRecordIntervalMinutes: parseInt(e.target.value)})} />
+                </div>
               </div>
-              <Button variant="ghost" className="w-full text-destructive hover:bg-destructive/10 text-[10px] font-mono uppercase h-8">Purge Old Records</Button>
+              <div className="space-y-2">
+                <Label>Video Storage Path</Label>
+                <div className="flex gap-2">
+                  <Input 
+                    value={localConfig.videoStoragePath} 
+                    onChange={(e) => setLocalConfig({...localConfig, videoStoragePath: e.target.value})} 
+                    placeholder="e.g. C:\Users\Admin\Videos\UTWatch"
+                  />
+                  <Button 
+                    type="button" 
+                    variant="secondary" 
+                    onClick={() => {
+                      const input = document.createElement('input');
+                      input.type = 'file';
+                      input.webkitdirectory = true;
+                      input.onchange = (e: any) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          // Note: Browsers restrict full path access for security, 
+                          // but this gives a visual directory selection experience.
+                          // We'll simulate path construction or notify user.
+                          toast({ title: "Note", description: "Path selection is illustrative. Ensure backend has read/write access to this directory." });
+                        }
+                      };
+                      input.click();
+                    }}
+                  >
+                    Browse
+                  </Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>

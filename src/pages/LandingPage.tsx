@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
-import { Shield, Camera, AlertTriangle, Activity, ArrowRight, Monitor, Zap, Lock } from "lucide-react";
+import { Shield, Camera, AlertTriangle, Activity, ArrowRight, Monitor, Zap, Lock, Sun, Moon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/components/ThemeProvider";
+import { useAuth, useTheme } from "@/components/ThemeProvider";
 
 const features = [
   { icon: Camera, title: "Real-Time Video Processing", description: "Capture and process multiple video feeds simultaneously with AI-powered analysis" },
@@ -15,16 +15,25 @@ const features = [
 const LandingPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { theme, toggleTheme } = useTheme();
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
       {/* Nav */}
       <nav className="glass-panel mx-3 mt-3 px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
           <img src="/logo.png" alt="Logo" className="h-6 w-6 object-contain" />
           <span className="font-mono font-bold text-sm tracking-wider text-foreground">UT WATCH</span>
         </div>
         <div className="flex items-center gap-3">
+          <button 
+            onClick={toggleTheme} 
+            className="p-2 rounded-md hover:bg-secondary transition-colors mr-2 border border-border/50" 
+            title="Toggle theme"
+          >
+            {theme === "dark" ? <Sun className="h-4 w-4 text-primary" /> : <Moon className="h-4 w-4 text-primary" />}
+          </button>
+          
           {user ? (
             <button
               onClick={() => navigate("/dashboard")}
