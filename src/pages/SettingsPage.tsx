@@ -163,8 +163,8 @@ const SettingsPage = () => {
               </div>
               <div className="space-y-2">
                 <Label>Object Classes to Display</Label>
-                <div className="flex gap-4 flex-wrap">
-                  {["vehicle", "person", "animal", "obstacle", "accident"].map(cls => (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {["car", "truck", "motorcycle", "bus", "person", "animal", "obstacle", "accident", "license plate"].map(cls => (
                     <div key={cls} className="flex items-center space-x-2">
                       <Checkbox id={cls} checked={localConfig.displayClasses.includes(cls)} onCheckedChange={() => toggleClass(cls)} />
                       <label htmlFor={cls} className="text-sm capitalize">{cls}</label>

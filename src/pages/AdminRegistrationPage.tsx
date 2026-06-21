@@ -147,7 +147,7 @@ const AdminRegistrationPage = () => {
             <label className="text-[10px] font-mono uppercase text-muted-foreground">Email</label>
             <input name="email" type="email" value={formData.email} onChange={handleChange} required className={`auth-input ${formData.email ? (fieldValidation.email ? 'border-emerald-500/50' : 'border-destructive/50') : ''}`} />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1  gap-4">
             <div>
               <label className="text-[10px] font-mono uppercase text-muted-foreground">Date of Birth</label>
               <input name="dob" type="date" value={formData.dob} onChange={handleChange} required className={`auth-input ${formData.dob ? (fieldValidation.dob ? 'border-emerald-500/50' : 'border-destructive/50') : ''}`} />

@@ -9,7 +9,7 @@ class SocketService {
       const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
       
       this.socket = io(backendUrl, {
-        transports: ['websocket'],
+        transports: ['websocket', 'polling'],
         autoConnect: true,
         reconnection: true,
         reconnectionAttempts: Infinity, // Keep trying to connect

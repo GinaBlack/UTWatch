@@ -13,7 +13,11 @@ interface Camera {
 
 interface CameraState {
   camera: Camera;
-  stats: { vehicle: number; person: number; animal: number; obstacle: number; accident: number };
+  stats: { 
+    car: number; truck: number; motorcycle: number; bus: number; 
+    person: number; animal: number; obstacle: number; 
+    accident: number; license_plate: number 
+  };
   detections: any[];
   resultsBuffer: Map<number, any>;
   videoElement: HTMLVideoElement | null;
@@ -29,12 +33,14 @@ interface CameraState {
 interface VisionContextType {
   cameras: Camera[];
   cameraStates: Record<string, CameraState>;
+  globalStats: any;
   loading: boolean;
 }
 
 const VisionContext = createContext<VisionContextType>({
   cameras: [],
   cameraStates: {},
+  globalStats: null,
   loading: true,
 });
 
@@ -44,6 +50,7 @@ export const VisionProvider = ({ children }: { children: React.ReactNode }) => {
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [loading, setLoading] = useState(true);
   const [cameraStates, setCameraStates] = useState<Record<string, CameraState>>({});
+  const [globalStats, setGlobalStats] = useState<any>(null);
   
   // Use refs for values that change frequently to avoid re-renders
   const statesRef = useRef<Record<string, CameraState>>({});
@@ -109,7 +116,7 @@ export const VisionProvider = ({ children }: { children: React.ReactNode }) => {
 
         newStates[camera.cameraId] = {
           camera,
-          stats: { vehicle: 0, person: 0, animal: 0, obstacle: 0, accident: 0 },
+          stats: { car: 0, truck: 0, motorcycle: 0, bus: 0, person: 0, animal: 0, obstacle: 0, accident: 0, license_plate: 0 },
           detections: [],
           resultsBuffer: new Map(),
           videoElement: video,
@@ -161,9 +168,16 @@ export const VisionProvider = ({ children }: { children: React.ReactNode }) => {
       }));
     };
 
+    const handleStatsUpdate = (data: any) => {
+      setGlobalStats(data);
+    };
+
     socket.on('detection_result', handleDetectionResult);
+    socket.on('stats_update', handleStatsUpdate);
+
     return () => {
       socket.off('detection_result', handleDetectionResult);
+      socket.off('stats_update', handleStatsUpdate);
     };
   }, []);
 
@@ -264,7 +278,7 @@ export const VisionProvider = ({ children }: { children: React.ReactNode }) => {
   }, [processFrames]);
 
   return (
-    <VisionContext.Provider value={{ cameras, cameraStates, loading }}>
+    <VisionContext.Provider value={{ cameras, cameraStates, globalStats, loading }}>
       {children}
       {/* Persistent hidden container for video elements to keep them playing */}
       <div style={{ position: 'fixed', top: -1000, left: -1000, opacity: 0, pointerEvents: 'none' }}>

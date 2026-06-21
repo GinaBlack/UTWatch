@@ -75,7 +75,7 @@ const AppRoutes = () => (
   <Routes>
     <Route path="/" element={<LandingPage />} />
     <Route path="/auth" element={<AuthPage />} />
-    <Route path="/admin-register" element={<AdminRegistrationPage />} />
+    <Route path="/register-secured" element={<AdminRegistrationPage />} />
     <Route path="/verification" element={<VerificationPage />} />
     <Route path="/unauthorized" element={<UnauthorizedPage />} />
     <Route path="/under-setup" element={<SystemUnderSetupPage />} />

@@ -30,11 +30,15 @@ interface LiveVideoFeedProps {
 }
 
 const CLASS_COLORS: Record<string, string> = {
-  vehicle: '#3b82f6',
+  car: '#3b82f6',
+  truck: '#6366f1',
+  motorcycle: '#06b6d4',
+  bus: '#1d4ed8',
   accident: '#ef4444',
   person: '#10b981',
   animal: '#f59e0b',
   obstacle: '#8b5cf6',
+  'license plate': '#eab308',
 };
 
 const LiveVideoFeed: React.FC<LiveVideoFeedProps> = ({
@@ -49,7 +53,8 @@ const LiveVideoFeed: React.FC<LiveVideoFeedProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   
   const [visibleClasses, setVisibleClasses] = useState<Record<string, boolean>>({
-    vehicle: true, person: true, animal: true, obstacle: true, accident: true,
+    car: true, truck: true, motorcycle: true, bus: true, person: true, 
+    animal: true, obstacle: true, accident: true, 'license plate': true,
   });
   const [showTracks, setShowTracks] = useState(true);
 
@@ -146,9 +151,30 @@ const LiveVideoFeed: React.FC<LiveVideoFeedProps> = ({
       </CardHeader>
       <CardContent className="p-0 relative">
         <canvas ref={canvasRef} className="w-full aspect-video bg-black object-contain" />
-        <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] font-mono px-2 py-1 rounded flex gap-3 items-center backdrop-blur-md">
-          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> {state.stats.vehicle}</span>
+        
+        {(!state || !state.videoElement || state.videoElement.readyState < 2) && status !== 'offline' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+              <span className="text-[10px] font-mono text-white uppercase tracking-tighter">Initialising Stream...</span>
+            </div>
+            <p className="text-[8px] font-mono text-white/50 uppercase tracking-widest px-8 text-center">
+              Connecting to vision node and establishing secure relay
+            </p>
+          </div>
+        )}
+
+        {status === 'offline' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60">
+            <MonitorPlay className="h-8 w-8 text-muted-foreground/30 mb-2" />
+            <span className="text-[10px] font-mono text-muted-foreground uppercase">Node Offline</span>
+          </div>
+        )}
+
+        <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] font-mono px-2 py-1 rounded flex gap-3 items-center backdrop-blur-md border border-white/10">
+          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> {state.stats.car + state.stats.truck + state.stats.motorcycle + state.stats.bus}</span>
           <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {state.stats.person}</span>
+          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-yellow-500" /> {state.stats.license_plate}</span>
         </div>
       </CardContent>
     </Card>

@@ -51,7 +51,7 @@ const LandingPage = () => {
               </button>
               <button
                 onClick={() => navigate("/auth")}
-                className="px-4 py-2 rounded-md bg-primary text-primary-foreground font-mono text-xs font-semibold hover:opacity-90 transition-opacity"
+                className=" hidden px-4 py-2 rounded-md bg-primary text-primary-foreground font-mono text-xs font-semibold hover:opacity-90 transition-opacity"
               >
                 Get Started
               </button>

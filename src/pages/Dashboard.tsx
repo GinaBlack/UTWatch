@@ -14,13 +14,17 @@ import { Button } from "@/components/ui/button";
 import { useVision } from "../components/VisionProvider";
 
 const Dashboard = () => {
-  const { cameras, loading } = useVision();
+  const { cameras, loading, globalStats } = useVision();
   const [viewMode, setViewMode] = useState<"grid" | "single">("grid");
   const [selectedCameraId, setSelectedCameraId] = useState("");
   
   // Note: Statistics now come from socket events which are handled by the VisionProvider's internal logic. 
-  // For simplicity here, we assume cameras are already active.
   const activeCamera = cameras.find(c => c.cameraId === selectedCameraId) || (cameras.length > 0 ? cameras[0] : null);
+
+  // Calculate average density if globalStats exists
+  const avgDensity = globalStats?.density_history?.length > 0 
+    ? Math.round(globalStats.density_history.reduce((acc: number, curr: any) => acc + curr.value, 0) / globalStats.density_history.length)
+    : 0;
 
   return (
     <div className="space-y-3">
@@ -66,10 +70,9 @@ const Dashboard = () => {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard title="Active Nodes" value={cameras.length.toString()} change="System Online" changeType="positive" icon={CameraIcon} glowColor="primary" />
-        {/* Placeholder stats for demo purposes as we refactored to focus on video continuity */}
-        <StatCard title="Vehicles (Live)" value="--" change="Processing..." changeType="neutral" icon={Car} />
-        <StatCard title="Avg Density" value="--" change="Processing..." changeType="neutral" icon={Gauge} glowColor="warning" />
-        <StatCard title="Incidents Logged" value="--" change="Monitoring..." changeType="neutral" icon={AlertTriangle} glowColor="danger" />
+        <StatCard title="Vehicles (Live)" value={globalStats?.total_vehicles?.toString() || "0"} change="Total Detected" changeType="neutral" icon={Car} />
+        <StatCard title="Avg Density" value={avgDensity.toString()} change="Objects/Node" changeType="neutral" icon={Gauge} glowColor="warning" />
+        <StatCard title="Incidents Logged" value={globalStats?.total_accidents?.toString() || "0"} change="Active Session" changeType="neutral" icon={AlertTriangle} glowColor="danger" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -108,8 +111,8 @@ const Dashboard = () => {
           )}
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <TrafficDensityChart data={[]} />
-            <VehicleDetectionChart data={[]} />
+            <TrafficDensityChart data={globalStats?.density_history || []} />
+            <VehicleDetectionChart data={globalStats?.detection_history || []} />
           </div>
         </div>
 

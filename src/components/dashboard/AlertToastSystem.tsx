@@ -79,28 +79,46 @@ const AlertToastSystem = () => {
       console.log("Real-time alert received via Socket.IO:", alertData);
       
       const typeStr = alertData.type.replace(/_/g, ' ').toUpperCase();
+      const severity = alertData.severity || "high";
+      const isOverspeeding = alertData.type === 'overspeeding';
+      const type = isOverspeeding ? "violation" : "accident";
+      
       const title = `🚨 ${typeStr} DETECTED`;
       const description = `${alertData.camera_id}: ${alertData.details} detected on live vision node.`;
       
       addNotification({
-        type: "accident",
+        type: type,
         title: title,
         description: description,
-        severity: "critical",
+        severity: severity,
         time: "Just now",
       });
 
-      playCriticalAlert();
+      if (severity === "critical") {
+        playCriticalAlert();
+      }
       
-      toast.error(title, {
-        description: description,
-        duration: 8000,
-        style: {
-          fontFamily: "JetBrains Mono, monospace",
-          fontSize: "12px",
-          borderLeft: "4px solid #ef4444",
-        },
-      });
+      if (severity === "critical") {
+        toast.error(title, {
+          description: description,
+          duration: 8000,
+          style: {
+            fontFamily: "JetBrains Mono, monospace",
+            fontSize: "12px",
+            borderLeft: "4px solid #ef4444",
+          },
+        });
+      } else {
+        toast.warning(title, {
+          description: description,
+          duration: 5000,
+          style: {
+            fontFamily: "JetBrains Mono, monospace",
+            fontSize: "12px",
+            borderLeft: "4px solid #f59e0b",
+          },
+        });
+      }
     };
 
     socket.on('accident_alert', handleAccidentAlert);
